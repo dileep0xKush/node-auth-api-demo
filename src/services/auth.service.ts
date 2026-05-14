@@ -1,48 +1,131 @@
+import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcrypt";
-import { prisma } from "../config/prisma";
 
-export const registerUser = async (
-  email: string,
-  password: string
-) => {
-  const existingUser = await prisma.user.findUnique({
-    where: { email },
-  });
+const prisma = new PrismaClient();
 
-  if (existingUser) {
-    throw new Error("User already exists");
+export class UserService {
+  /**
+   * CREATE USER + ROLE
+   */
+  static async createUser(data: {
+    email: string;
+    password: string;
+    roleId?: string;
+  }) {
+    const hashedPassword = await bcrypt.hash(data.password, 10);
+
+    return prisma.user.create({
+      data: {
+        email: data.email,
+        password: hashedPassword,
+
+        // 👇 assign role at creation
+        userRoles: data.roleId
+          ? {
+              create: {
+                roleId: data.roleId,
+              },
+            }
+          : undefined,
+      },
+      include: {
+        userRoles: {
+          include: {
+            role: true,
+          },
+        },
+      },
+    });
   }
 
-  const hashedPassword = await bcrypt.hash(password, 10);
+  /**
+   * UPDATE USER + ROLE
+   * 👉 replaces role if roleId provided
+   */
+  static async updateUser(
+    id: string,
+    data: { email?: string; password?: string; roleId?: string },
+  ) {
+    const updateData: any = {};
 
-  return prisma.user.create({
-    data: {
-      email,
-      password: hashedPassword,
-    },
-  });
-};
+    if (data.email) updateData.email = data.email;
 
-export const loginUser = async (
-  email: string,
-  password: string
-) => {
-  const user = await prisma.user.findUnique({
-    where: { email },
-  });
+    if (data.password) {
+      updateData.password = await bcrypt.hash(data.password, 10);
+    }
 
-  if (!user) {
-    throw new Error("Invalid credentials");
+    return prisma.user
+      .update({
+        where: { id },
+        data: updateData,
+        include: {
+          userRoles: {
+            include: { role: true },
+          },
+        },
+      })
+      .then(async (user) => {
+        // 👇 update role separately if provided
+        if (data.roleId) {
+          await prisma.userRole.deleteMany({
+            where: { userId: id },
+          });
+
+          await prisma.userRole.create({
+            data: {
+              userId: id,
+              roleId: data.roleId,
+            },
+          });
+        }
+
+        return prisma.user.findUnique({
+          where: { id },
+          include: {
+            userRoles: {
+              include: { role: true },
+            },
+          },
+        });
+      });
   }
 
-  const isPasswordValid = await bcrypt.compare(
-    password,
-    user.password
-  );
-
-  if (!isPasswordValid) {
-    throw new Error("Invalid credentials");
+  static async getAllUsers() {
+    return prisma.user.findMany({
+      include: {
+        userRoles: {
+          include: { role: true },
+        },
+      },
+    });
   }
 
-  return user;
-};
+  static async getUserById(id: string) {
+    return prisma.user.findUnique({
+      where: { id },
+      include: {
+        userRoles: {
+          include: { role: true },
+        },
+      },
+    });
+  }
+
+  static async deleteUser(id: string) {
+    return prisma.user.delete({
+      where: { id },
+    });
+  }
+
+  static async assignRole(userId: string, roleId: string) {
+    return prisma.userRole.create({
+      data: { userId, roleId },
+    });
+  }
+
+  static async removeRole(userId: string, roleId: string) {
+    return prisma.userRole.deleteMany({
+      where: { userId, roleId },
+    });
+  }
+}
