@@ -1,0 +1,152 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// ======================
+/// USER
+/// ======================
+model User {
+  id          String      @id @default(uuid())
+  name        String?
+  email       String      @unique
+  password    String
+  isActive    Boolean     @default(true)
+
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  /// Relations
+  userRoles   UserRole[]
+
+  @@map("users")
+}
+
+/// ======================
+/// ROLE
+/// ======================
+model Role {
+  id          String            @id @default(uuid())
+  name        String            @unique
+  description String?
+
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  /// Relations
+  userRoles       UserRole[]
+  rolePermissions RolePermission[]
+
+  @@map("roles")
+}
+
+/// ======================
+/// PERMISSION
+/// ======================
+model Permission {
+  id          String            @id @default(uuid())
+
+  /// Examples:
+  /// product.create
+  /// product.update
+  /// category.delete
+  name        String            @unique
+
+  module      String
+  action      String
+
+  description String?
+
+  createdAt   DateTime          @default(now())
+
+  /// Relations
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
+}
+
+/// ======================
+/// USER ROLE
+/// Many-to-Many
+/// ======================
+model UserRole {
+  id        String   @id @default(uuid())
+
+  userId    String
+  roleId    String
+
+  assignedAt DateTime @default(now())
+
+  /// Relations
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleId])
+  @@map("user_roles")
+}
+
+/// ======================
+/// ROLE PERMISSION
+/// Many-to-Many
+/// ======================
+model RolePermission {
+  id            String      @id @default(uuid())
+
+  roleId        String
+  permissionId  String
+
+  /// Relations
+  role          Role        @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission    Permission  @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+/// ======================
+/// PRODUCT CATEGORY
+/// ======================
+model ProductCategory {
+  id          String      @id @default(uuid())
+  name        String      @unique
+  slug        String      @unique
+  description String?
+
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  /// Relations
+  products    Product[]
+
+  @@map("product_categories")
+}
+
+/// ======================
+/// PRODUCT
+/// ======================
+model Product {
+  id            String           @id @default(uuid())
+
+  name          String
+  slug          String           @unique
+  description   String?
+
+  price         Decimal          @db.Decimal(10, 2)
+  stock         Int              @default(0)
+
+  isPublished   Boolean          @default(false)
+
+  categoryId    String
+
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  /// Relations
+  category      ProductCategory  @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+
+  @@map("products")
+}
